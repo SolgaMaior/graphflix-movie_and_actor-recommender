@@ -32,12 +32,11 @@ RUN composer install --no-dev --optimize-autoloader --no-interaction --no-script
 
 COPY . .
 COPY --from=frontend /app/public/build ./public/build
+COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 
 RUN php artisan package:discover --ansi
 
-RUN sed -i 's#DocumentRoot /var/www/html#DocumentRoot /var/www/html/public#' /etc/apache2/sites-available/000-default.conf \
-    && sed -i 's#<Directory /var/www/>#<Directory /var/www/html/public/>#' /etc/apache2/apache2.conf \
-    && chown -R www-data:www-data storage bootstrap/cache
+RUN chown -R www-data:www-data storage bootstrap/cache
 
 EXPOSE 10000
 
