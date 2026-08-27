@@ -25,7 +25,7 @@ final class GraphService
     ) {}
 
     /** @return list<Movie> */
-    public function moviesByGenre(?string $genre = null, int $limit = 100): array
+    public function moviesByGenre(?string $genre = null, int $limit = 50): array
     {
         $rows = $this->run(
             <<<'CYPHER'
@@ -65,25 +65,55 @@ final class GraphService
         )));
     }
 
+    public function movieByTitle(string $title): ?Movie
+    {
+        $row = $this->run(
+            'MATCH (m:Movie {title: $movieTitle}) RETURN m.id AS id, m.title AS title, m.year AS year, m.genre AS genre LIMIT 1',
+            ['movieTitle' => $title],
+        )[0] ?? null;
+
+        return $row ? new Movie(
+            id: (string) ($row['id'] ?? ''),
+            title: (string) ($row['title'] ?? $title),
+            year: isset($row['year']) ? (int) $row['year'] : null,
+            genre: isset($row['genre']) ? (string) $row['genre'] : null,
+        ) : null;
+    }
+
+    /** @return list<string> */
+    public function directorsForMovie(string $title): array
+    {
+        $rows = $this->run(
+            'MATCH (m:Movie {title: $movieTitle})<-[:DIRECTED]-(d:Director) RETURN d.name AS name ORDER BY name',
+            ['movieTitle' => $title],
+        );
+
+        return array_values(array_filter(array_map(
+            static fn (array $row): string => (string) ($row['name'] ?? ''),
+            $rows,
+        )));
+    }
+
     /** @return list<Recommendation> */
-    public function otherMoviesByActors(string $title, int $limit = 20): array
+    public function otherMoviesByActors(string $title, int $limit = 10): array
     {
         $rows = $this->run(
             <<<'CYPHER'
             MATCH (seed:Movie {title: $movieTitle})
-            MATCH p=(seed)-[:ACTED_IN*3..6]-(candidate:Movie)
+            MATCH (actor:Actor)-[:ACTED_IN]->(seed)
+            MATCH (actor)-[:ACTED_IN]->(candidate:Movie)
+
             WHERE candidate <> seed
-            WITH candidate, p, nodes(p)[1].name AS connectorName
+
             WITH candidate,
-                 min(length(p)) AS distance,
-                 count(p) AS pathCount,
-                 collect(DISTINCT connectorName)[0] AS connectorName
+                count(DISTINCT actor) AS sharedActors,
+                collect(DISTINCT actor.name) AS actors
+
             RETURN candidate.title AS title,
-                   distance,
-                   pathCount,
-                   (1.0 / toFloat(distance)) * log10(1.0 + toFloat(pathCount)) AS relevanceScore,
-                   connectorName
-            ORDER BY relevanceScore DESC, pathCount DESC, title
+                sharedActors,
+                actors
+
+            ORDER BY sharedActors DESC, title ASC
             LIMIT $limit
             CYPHER,
             ['movieTitle' => $title, 'limit' => $this->safeLimit($limit)],
@@ -95,6 +125,7 @@ final class GraphService
             pathCount: (int) ($row['pathCount'] ?? 0),
             relevanceScore: (float) ($row['relevanceScore'] ?? 0),
             connectorName: isset($row['connectorName']) ? (string) $row['connectorName'] : null,
+            connectorType: isset($row['connectorType']) ? (string) $row['connectorType'] : null,
         ), $rows);
     }
 
@@ -133,27 +164,33 @@ final class GraphService
     }
 
     /** @return list<Recommendation> */
-    public function recommendationsForMovie(string $title, int $minDistance = 2, int $maxDistance = 6, int $limit = 20): array
+    public function recommendationsForMovie(string $title, int $minDistance = 2, int $maxDistance = 6, int $limit = 10): array
     {
         $minDistance = max(1, $minDistance);
         $maxDistance = max($minDistance, $maxDistance);
         $rows = $this->run(
             <<<'CYPHER'
             MATCH (seed:Movie {title: $movieTitle})
-            MATCH p=(seed)-[:ACTED_IN|DIRECTED*3..6]-(candidate:Movie)
+            OPTIONAL MATCH (seed)<-[:ACTED_IN]-(a:Actor)-[:ACTED_IN]->(candidate:Movie)
             WHERE candidate <> seed
-              AND length(p) >= $minDistance
-              AND length(p) <= $maxDistance
-            WITH candidate, p,
-                 nodes(p)[1].name AS connectorName
-            WITH candidate, min(length(p)) AS distance,
-                 count(p) AS pathCount,
-                 collect(DISTINCT connectorName)[0] AS connectorName
-            RETURN candidate.title AS title, distance, pathCount,
-                   (1.0 / toFloat(distance)) * log10(1.0 + toFloat(pathCount)) AS relevanceScore,
-                   connectorName
-            ORDER BY relevanceScore DESC, pathCount DESC, distance ASC, title
-            LIMIT $limit
+            WITH seed, candidate, count(DISTINCT a) AS sharedActors
+
+            OPTIONAL MATCH (seed)<-[:DIRECTED]-(d:Director)-[:DIRECTED]->(candidate)
+            WITH seed, candidate, sharedActors, count(DISTINCT d) AS sharedDirectors
+
+            WHERE candidate IS NOT NULL
+
+            RETURN
+                candidate.title AS title,
+                sharedActors,
+                sharedDirectors,
+                2 AS distance,
+                (
+                    sharedActors * 0.4 +
+                    sharedDirectors * 0.6
+                ) AS relevanceScore
+            ORDER BY relevanceScore DESC
+            LIMIT $limit;
             CYPHER,
             [
                 'movieTitle' => $title,
@@ -169,6 +206,7 @@ final class GraphService
             pathCount: (int) ($row['pathCount'] ?? 0),
             relevanceScore: (float) ($row['relevanceScore'] ?? 0),
             connectorName: isset($row['connectorName']) ? (string) $row['connectorName'] : null,
+            connectorType: isset($row['connectorType']) ? (string) $row['connectorType'] : null,
         ), $rows);
     }
 

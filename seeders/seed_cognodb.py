@@ -43,14 +43,14 @@ COGNODB_USER = os.getenv("COGNODB_USER")
 COGNODB_PASSWORD = os.getenv("COGNODB_PASSWORD") or os.getenv("COGNODB_PASS")
 
 # How much data to pull
-NUM_MOVIES = 500
+NUM_MOVIES = 150
 # Maximum number of users to include. The most active users in the selected
 # movie set are chosen, so this does not create synthetic users.
-NUM_USERS = 100
-# Number of cast members kept per movie. Five keeps the graph useful without
-# making the actor subgraph disproportionately large.
-CAST_PER_MOVIE = 5
-BATCH_SIZE = 1000
+NUM_USERS = 250
+# Keep the first 10 billed cast members per movie to balance useful actor
+# connections with graph size and query response time.
+CAST_PER_MOVIE = 10
+BATCH_SIZE = 100
 
 # ---------------------------------------------------------------------------
 # STEP 1: Load and filter the raw CSVs
@@ -137,7 +137,8 @@ def get_top_cast(cast_str, n=CAST_PER_MOVIE):
         return []
     if not isinstance(cast, list):
         return []
-    return [c.get("name") for c in cast[:n] if isinstance(c, dict) and c.get("name")]
+    selected_cast = cast if n is None else cast[:n]
+    return [c.get("name") for c in selected_cast if isinstance(c, dict) and c.get("name")]
 
 
 def get_genre(genres_str):

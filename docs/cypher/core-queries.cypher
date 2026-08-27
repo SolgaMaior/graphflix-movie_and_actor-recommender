@@ -57,21 +57,35 @@ LIMIT $limit;
 // Actor-only traversal at 3–6 hops ensures this section stays focused on
 // actor networks while remaining distinct from the primary mixed network.
 // Parameters: $movieTitle
-MATCH (seed:Movie {title: $movieTitle})
-MATCH p=(seed)-[:ACTED_IN*3..6]-(candidate:Movie)
+MATCH (seed:Movie {title: 'Forrest Gump'})
+
+OPTIONAL MATCH (seed)<-[:ACTED_IN]-(a:Actor)-[:ACTED_IN]->(candidate:Movie)
 WHERE candidate <> seed
-WITH candidate, p, nodes(p)[1].name AS connectorName
+WITH seed, candidate, count(DISTINCT a) AS sharedActors
+
+OPTIONAL MATCH (seed)<-[:DIRECTED]-(d:Director)-[:DIRECTED]->(candidate)
+WITH seed, candidate, sharedActors, count(DISTINCT d) AS sharedDirectors
+
+OPTIONAL MATCH (seed)-[:IN_GENRE]->(g:Genre)<-[:IN_GENRE]-(candidate)
 WITH candidate,
-     min(length(p)) AS distance,
-     count(p) AS pathCount,
-     collect(DISTINCT connectorName)[0] AS connectorName
-RETURN candidate.title AS title,
-       distance,
-       pathCount,
-       (1.0 / toFloat(distance)) * log10(1.0 + toFloat(pathCount)) AS relevanceScore,
-       connectorName
-ORDER BY relevanceScore DESC, pathCount DESC, distance ASC, title
-LIMIT $limit;
+     sharedActors,
+     sharedDirectors,
+     count(DISTINCT g) AS sharedGenres
+
+WHERE candidate IS NOT NULL
+
+RETURN
+    candidate.title AS title,
+    sharedActors,
+    sharedDirectors,
+    sharedGenres,
+    (
+        sharedActors * 0.4 +
+        sharedDirectors * 0.3 +
+        sharedGenres * 0.3
+    ) AS score
+ORDER BY score DESC
+LIMIT 10;
 
 // ---------------------------------------------------------------------------
 // User recommendations: similar taste

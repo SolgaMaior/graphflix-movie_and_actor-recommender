@@ -12,6 +12,7 @@ final readonly class Recommendation implements \JsonSerializable
         public int $sharedMovies = 0,
         public float $relevanceScore = 0.0,
         public ?string $connectorName = null,
+        public ?string $connectorType = null,
     ) {}
 
     public function jsonSerialize(): array
