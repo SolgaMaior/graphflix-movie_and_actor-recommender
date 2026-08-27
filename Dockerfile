@@ -34,7 +34,9 @@ COPY . .
 COPY --from=frontend /app/public/build ./public/build
 COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 
-RUN php artisan package:discover --ansi
+RUN a2dissite 000-default \
+    && a2ensite 000-default \
+    && php artisan package:discover --ansi
 
 RUN chown -R www-data:www-data storage bootstrap/cache
 
