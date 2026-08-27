@@ -36,6 +36,7 @@ COPY docker/apache-vhost.conf /etc/apache2/sites-available/000-default.conf
 
 RUN a2dissite 000-default \
     && a2ensite 000-default \
+    && sed -i 's#DocumentRoot /var/www/html$#DocumentRoot /var/www/html/public#' /etc/apache2/sites-available/000-default.conf \
     && php artisan package:discover --ansi
 
 RUN chown -R www-data:www-data storage bootstrap/cache
