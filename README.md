@@ -213,9 +213,27 @@ full-page “Loading graph data...” state. This keeps the interface clear whil
 the server performs the graph query and is also used when submitting the genre
 filter form.
 
-## Core queries
+## Cypher queries that exercise the graph
 
-All queries are parameterized; no user input is concatenated into Cypher.
+Graphflix's core behavior is driven by Cypher queries that traverse the graph,
+not by isolated movie lookups. All queries are parameterized; no user input is
+concatenated into Cypher.
+
+### Multi-hop movie traversal
+
+This query follows actor and director relationships for two or more hops. The
+variable-length pattern lets CognoDB discover connected movies without the
+application writing a separate join for every possible hop:
+
+```cypher
+MATCH p=(seed:Movie {title: $movieTitle})-[:ACTED_IN|DIRECTED*2..4]-(candidate:Movie)
+WHERE candidate <> seed
+RETURN candidate.title AS title,
+       min(length(p)) AS distance,
+       count(p) AS pathCount
+ORDER BY distance ASC, pathCount DESC, title
+LIMIT $limit
+```
 
 Deeper movie recommendations use a variable-length actor/director traversal:
 
@@ -238,8 +256,24 @@ LIMIT $limit
 ```
 
 The actor-only section uses the same shape but only `ACTED_IN` relationships.
-User recommendations use shared `WATCHED` movie connections and exclude movies
-the selected user has already watched. See
+User recommendations use a longer shared-taste traversal:
+
+```cypher
+MATCH (selected:User {id: $userId})-[:WATCHED]->(shared:Movie)
+      <-[:WATCHED]-(similar:User)-[:WATCHED]->(recommendation:Movie)
+WHERE similar <> selected
+  AND NOT (selected)-[:WATCHED]->(recommendation)
+WITH recommendation, count(DISTINCT similar) AS similarUsers
+RETURN recommendation.title AS title, similarUsers
+ORDER BY similarUsers DESC, title
+LIMIT $limit
+```
+
+The shared-taste query is especially awkward in a relational database: it
+requires multiple self-joins through the watch table, exclusion logic, and
+deduplication of intermediate users. In the graph, the connected path is
+expressed directly and the query can rank recommendations by the number of
+similar users. See
 [`docs/cypher/core-queries.cypher`](docs/cypher/core-queries.cypher) for the
 complete workbook and parameters.
 
