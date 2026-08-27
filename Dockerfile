@@ -1,0 +1,27 @@
+FROM php:8.3-apache
+
+RUN apt-get update \
+    && apt-get install -y git unzip libzip-dev libicu-dev libxml2-dev \
+    && docker-php-ext-install intl mbstring xml zip \
+    && a2enmod rewrite \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /var/www/html
+
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+COPY . .
+
+RUN npm install
+RUN npm run build
+
+RUN sed -i 's#DocumentRoot /var/www/html#DocumentRoot /var/www/html/public#' /etc/apache2/sites-available/000-default.conf \
+    && sed -i 's#<Directory /var/www/>#<Directory /var/www/html/public/>#' /etc/apache2/apache2.conf \
+    && chown -R www-data:www-data storage bootstrap/cache
+
+EXPOSE 10000
+
+CMD ["sh", "-c", "sed -i \"s/Listen 80/Listen ${PORT:-10000}/\" /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf && apache2-foreground"]
