@@ -1,8 +1,19 @@
+FROM node:22-alpine AS frontend
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY resources ./resources
+COPY vite.config.js .
+RUN npm run build
+
 FROM php:8.3-apache
 
 RUN apt-get update \
-    && apt-get install -y git unzip libzip-dev libicu-dev libxml2-dev \
-    && docker-php-ext-install intl mbstring xml zip \
+    && apt-get install -y --no-install-recommends git unzip libzip-dev libicu-dev libxml2-dev libonig-dev libcurl4-openssl-dev \
+    && docker-php-ext-install curl intl mbstring xml zip \
     && a2enmod rewrite \
     && rm -rf /var/lib/apt/lists/*
 
@@ -14,9 +25,7 @@ COPY composer.json composer.lock ./
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
 COPY . .
-
-RUN npm install
-RUN npm run build
+COPY --from=frontend /app/public/build ./public/build
 
 RUN sed -i 's#DocumentRoot /var/www/html#DocumentRoot /var/www/html/public#' /etc/apache2/sites-available/000-default.conf \
     && sed -i 's#<Directory /var/www/>#<Directory /var/www/html/public/>#' /etc/apache2/apache2.conf \
