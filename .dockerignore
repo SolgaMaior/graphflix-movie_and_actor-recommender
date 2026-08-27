@@ -4,3 +4,9 @@
 node_modules
 vendor
 storage/logs/*
+.venv/
+venv/
+.venv
+__pycache__/
+*.pyc
+seeders
