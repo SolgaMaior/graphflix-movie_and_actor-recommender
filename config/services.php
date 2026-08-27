@@ -2,6 +2,12 @@
 
 return [
 
+    'cognodb' => [
+        'uri' => env('COGNODB_URI'),
+        'user' => env('COGNODB_USER'),
+        'password' => env('COGNODB_PASSWORD', env('COGNODB_PASS')),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services
