@@ -14,6 +14,7 @@ use Throwable;
 final class GraphService
 {
     private ?ClientInterface $client = null;
+
     private ?string $lastError = null;
 
     public function __construct(
@@ -111,7 +112,8 @@ final class GraphService
 
             RETURN candidate.title AS title,
                 sharedActors,
-                actors
+                actors[0] AS connectorName,
+                'Actor' AS connectorType
 
             ORDER BY sharedActors DESC, title ASC
             LIMIT $limit
