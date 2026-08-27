@@ -3,21 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Services\GraphService;
-use Illuminate\Http\JsonResponse;
-
 final class UserController extends Controller
 {
-    public function index(GraphService $graph): JsonResponse
+    public function index(GraphService $graph)
     {
-        return response()->json(['users' => $graph->allUsers()]);
+        return view('users.index', ['movies' => $graph->popularMoviesByUsers(), 'error' => $graph->error()]);
     }
 
-    public function show(string $id, GraphService $graph): JsonResponse
+    public function show(string $id, GraphService $graph)
     {
-        return response()->json([
-            'user' => $id,
+        return view('users.show', [
+            'id' => $id,
             'similarUsers' => $graph->similarUsers($id),
             'recommendedMovies' => $graph->recommendedMoviesForUser($id),
+            'error' => $graph->error(),
         ]);
     }
 }

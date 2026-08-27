@@ -5,7 +5,9 @@ return [
     'cognodb' => [
         'uri' => env('COGNODB_URI'),
         'user' => env('COGNODB_USER'),
-        'password' => env('COGNODB_PASSWORD', env('COGNODB_PASS')),
+        'password' => env('COGNODB_PASSWORD') ?: env('COGNODB_PASS'),
+        'retries' => (int) env('COGNODB_RETRIES', 3),
+        'retry_delay_ms' => (int) env('COGNODB_RETRY_DELAY_MS', 250),
     ],
 
     /*

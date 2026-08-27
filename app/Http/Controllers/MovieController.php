@@ -3,16 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Services\GraphService;
-use Illuminate\Http\JsonResponse;
-
 final class MovieController extends Controller
 {
-    public function show(string $title, GraphService $graph): JsonResponse
+    public function show(string $title, GraphService $graph)
     {
-        return response()->json([
-            'movie' => $title,
-            'becauseYouWatched' => $graph->recommendationsForMovie($title, 2, 2),
-            'similarFromOtherActors' => $graph->recommendationsForMovie($title, 3, 6),
+        $actors = $graph->actorsForMovie($title);
+        // Explore deeper actor/director paths for network-based recommendations.
+        $becauseYouWatched = $graph->recommendationsForMovie($title, 3, 6);
+        $similarFromOtherActors = $graph->otherMoviesByActors($title);
+
+        return view('movies.show', compact('title', 'actors', 'becauseYouWatched', 'similarFromOtherActors') + [
+            'error' => $graph->error(),
         ]);
     }
 }

@@ -17,6 +17,8 @@ class AppServiceProvider extends ServiceProvider
                 config('services.cognodb.uri'),
                 config('services.cognodb.user'),
                 config('services.cognodb.password'),
+                config('services.cognodb.retries', 3),
+                config('services.cognodb.retry_delay_ms', 250),
             );
         });
     }

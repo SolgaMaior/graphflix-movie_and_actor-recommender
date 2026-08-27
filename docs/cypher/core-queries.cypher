@@ -37,17 +37,15 @@ LIMIT $limit;
 MATCH (seed:Movie {title: $movieTitle})
 MATCH p=(seed)-[:ACTED_IN|DIRECTED*2..6]-(candidate:Movie)
 WHERE candidate <> seed
-WITH candidate, collect(p) AS paths
-UNWIND paths AS p
-WITH candidate, paths, p, nodes(p)[1] AS connector
+WITH candidate, p, nodes(p)[1].name AS connectorName
 WITH candidate,
      min(length(p)) AS distance,
-     size(paths) AS pathCount,
-     collect(DISTINCT connector.name)[0] AS connectorName
+     count(p) AS pathCount,
+     collect(DISTINCT connectorName)[0] AS connectorName
 RETURN candidate.title AS title,
        distance,
        pathCount,
-       (1.0 / distance) * log10(1.0 + pathCount) AS relevanceScore,
+       (1.0 / toFloat(distance)) * log10(1.0 + toFloat(pathCount)) AS relevanceScore,
        connectorName
 ORDER BY relevanceScore DESC, pathCount DESC, distance ASC, title
 LIMIT $limit;
@@ -56,23 +54,21 @@ LIMIT $limit;
 // Movie recommendations: distinct secondary section
 // ---------------------------------------------------------------------------
 
-// Same traversal, but distance >= 3 ensures this section does not overlap
-// with the closest primary recommendations.
+// Actor-only traversal at 3–6 hops ensures this section stays focused on
+// actor networks while remaining distinct from the primary mixed network.
 // Parameters: $movieTitle
 MATCH (seed:Movie {title: $movieTitle})
-MATCH p=(seed)-[:ACTED_IN|DIRECTED*3..6]-(candidate:Movie)
+MATCH p=(seed)-[:ACTED_IN*3..6]-(candidate:Movie)
 WHERE candidate <> seed
-WITH candidate, collect(p) AS paths
-UNWIND paths AS p
-WITH candidate, paths, p, nodes(p)[1] AS connector
+WITH candidate, p, nodes(p)[1].name AS connectorName
 WITH candidate,
      min(length(p)) AS distance,
-     size(paths) AS pathCount,
-     collect(DISTINCT connector.name)[0] AS connectorName
+     count(p) AS pathCount,
+     collect(DISTINCT connectorName)[0] AS connectorName
 RETURN candidate.title AS title,
        distance,
        pathCount,
-       (1.0 / distance) * log10(1.0 + pathCount) AS relevanceScore,
+       (1.0 / toFloat(distance)) * log10(1.0 + toFloat(pathCount)) AS relevanceScore,
        connectorName
 ORDER BY relevanceScore DESC, pathCount DESC, distance ASC, title
 LIMIT $limit;

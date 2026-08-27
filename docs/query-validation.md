@@ -36,7 +36,8 @@ User-to-Movie hop.
 
 - Run the browse query and confirm genres return grouped samples.
 - Run both movie recommendation queries with at least four different seed
-  titles. Confirm the secondary results have `distance >= 3`.
+  titles. Confirm the network recommendations use distances 3–6 and the
+  actor-specific results use the direct actor connection.
 - Run both user recommendation queries with at least four different user IDs.
 - Prefix each final query with `PROFILE`.
 - Confirm the movie-title and user-ID anchors use `NodeIndexSeek` rather than

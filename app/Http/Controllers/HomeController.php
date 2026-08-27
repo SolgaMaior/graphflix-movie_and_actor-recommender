@@ -3,16 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Services\GraphService;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 final class HomeController extends Controller
 {
-    public function index(Request $request, GraphService $graph): JsonResponse
+    public function index(Request $request, GraphService $graph)
     {
-        return response()->json([
-            'genre' => $request->string('genre')->toString() ?: null,
-            'movies' => $graph->moviesByGenre($request->string('genre')->toString() ?: null),
+        $genre = $request->string('genre')->toString() ?: null;
+
+        return view('home', [
+            'genre' => $genre,
+            'movies' => $graph->moviesByGenre($genre),
+            'error' => $graph->error(),
         ]);
     }
 }

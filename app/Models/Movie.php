@@ -9,6 +9,7 @@ final readonly class Movie implements \JsonSerializable
         public string $title,
         public ?int $year = null,
         public ?string $genre = null,
+        public int $watchers = 0,
     ) {}
 
     public function jsonSerialize(): array

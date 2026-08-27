@@ -14,11 +14,14 @@ use Throwable;
 final class GraphService
 {
     private ?ClientInterface $client = null;
+    private ?string $lastError = null;
 
     public function __construct(
         private readonly ?string $uri,
         private readonly ?string $username,
         private readonly ?string $password,
+        private readonly int $retries = 3,
+        private readonly int $retryDelayMs = 250,
     ) {}
 
     /** @return list<Movie> */
@@ -43,6 +46,58 @@ final class GraphService
         ), $rows);
     }
 
+    public function error(): ?string
+    {
+        return $this->lastError;
+    }
+
+    /** @return list<string> */
+    public function actorsForMovie(string $title): array
+    {
+        $rows = $this->run(
+            'MATCH (m:Movie {title: $movieTitle})<-[:ACTED_IN]-(a:Actor) RETURN a.name AS name ORDER BY a.id LIMIT 1',
+            ['movieTitle' => $title],
+        );
+
+        return array_values(array_filter(array_map(
+            static fn (array $row): string => (string) ($row['name'] ?? ''),
+            $rows,
+        )));
+    }
+
+    /** @return list<Recommendation> */
+    public function otherMoviesByActors(string $title, int $limit = 20): array
+    {
+        $rows = $this->run(
+            <<<'CYPHER'
+            MATCH (seed:Movie {title: $movieTitle})
+            MATCH p=(seed)-[:ACTED_IN*3..6]-(candidate:Movie)
+            WHERE candidate <> seed
+            WITH candidate, p, nodes(p)[1].name AS connectorName
+            WITH candidate,
+                 min(length(p)) AS distance,
+                 count(p) AS pathCount,
+                 collect(DISTINCT connectorName)[0] AS connectorName
+            RETURN candidate.title AS title,
+                   distance,
+                   pathCount,
+                   (1.0 / toFloat(distance)) * log10(1.0 + toFloat(pathCount)) AS relevanceScore,
+                   connectorName
+            ORDER BY relevanceScore DESC, pathCount DESC, title
+            LIMIT $limit
+            CYPHER,
+            ['movieTitle' => $title, 'limit' => $this->safeLimit($limit)],
+        );
+
+        return array_map(static fn (array $row): Recommendation => new Recommendation(
+            title: (string) ($row['title'] ?? ''),
+            distance: (int) ($row['distance'] ?? 3),
+            pathCount: (int) ($row['pathCount'] ?? 0),
+            relevanceScore: (float) ($row['relevanceScore'] ?? 0),
+            connectorName: isset($row['connectorName']) ? (string) $row['connectorName'] : null,
+        ), $rows);
+    }
+
     /** @return list<User> */
     public function allUsers(int $limit = 100): array
     {
@@ -55,6 +110,28 @@ final class GraphService
         ));
     }
 
+    /** @return list<Movie> */
+    public function popularMoviesByUsers(int $limit = 100): array
+    {
+        return array_map(static fn (array $row): Movie => new Movie(
+            id: (string) ($row['id'] ?? ''),
+            title: (string) ($row['title'] ?? 'Unknown'),
+            year: isset($row['year']) ? (int) $row['year'] : null,
+            genre: isset($row['genre']) ? (string) $row['genre'] : null,
+            watchers: (int) ($row['watchers'] ?? 0),
+        ), $this->run(
+            <<<'CYPHER'
+            MATCH (u:User)-[:WATCHED]->(m:Movie)
+            WITH m, count(DISTINCT u) AS watchers
+            RETURN m.id AS id, m.title AS title, m.year AS year,
+                   m.genre AS genre, watchers
+            ORDER BY watchers DESC, title
+            LIMIT $limit
+            CYPHER,
+            ['limit' => $this->safeLimit($limit)],
+        ));
+    }
+
     /** @return list<Recommendation> */
     public function recommendationsForMovie(string $title, int $minDistance = 2, int $maxDistance = 6, int $limit = 20): array
     {
@@ -63,17 +140,17 @@ final class GraphService
         $rows = $this->run(
             <<<'CYPHER'
             MATCH (seed:Movie {title: $movieTitle})
-            MATCH p=(seed)-[:ACTED_IN|DIRECTED*2..6]-(candidate:Movie)
+            MATCH p=(seed)-[:ACTED_IN|DIRECTED*3..6]-(candidate:Movie)
             WHERE candidate <> seed
               AND length(p) >= $minDistance
               AND length(p) <= $maxDistance
-            WITH candidate, collect(p) AS paths
-            WITH candidate,
-                 min([path IN paths | length(path)]) AS distance,
-                 size(paths) AS pathCount,
-                 collect(DISTINCT nodes(paths[0])[1].name)[0] AS connectorName
+            WITH candidate, p,
+                 nodes(p)[1].name AS connectorName
+            WITH candidate, min(length(p)) AS distance,
+                 count(p) AS pathCount,
+                 collect(DISTINCT connectorName)[0] AS connectorName
             RETURN candidate.title AS title, distance, pathCount,
-                   (1.0 / distance) * log10(1.0 + pathCount) AS relevanceScore,
+                   (1.0 / toFloat(distance)) * log10(1.0 + toFloat(pathCount)) AS relevanceScore,
                    connectorName
             ORDER BY relevanceScore DESC, pathCount DESC, distance ASC, title
             LIMIT $limit
@@ -147,15 +224,37 @@ final class GraphService
     /** @return list<array<string, mixed>> */
     private function run(string $query, array $parameters): array
     {
-        try {
-            $result = $this->client()->run($query, $parameters);
+        $attempts = min(max($this->retries, 1), 5);
 
-            return array_map(static fn ($row): array => $row->toArray(), $result->getResults()->toArray());
-        } catch (Throwable $exception) {
-            Log::error('CognoDB query failed', ['message' => $exception->getMessage()]);
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            try {
+                $result = $this->client()->run($query, $parameters);
+                $this->lastError = null;
 
-            return [];
+                return array_map(static fn ($row): array => $row->toArray(), $result->getResults()->toArray());
+            } catch (Throwable $exception) {
+                $this->closeClient();
+
+                if ($attempt === $attempts) {
+                    Log::error('CognoDB query failed after retries', [
+                        'attempts' => $attempts,
+                        'message' => $exception->getMessage(),
+                    ]);
+                    $this->lastError = 'CognoDB is unavailable. Check the connection settings and network access.';
+
+                    return [];
+                }
+
+                Log::warning('CognoDB query failed; retrying', [
+                    'attempt' => $attempt,
+                    'attempts' => $attempts,
+                    'message' => $exception->getMessage(),
+                ]);
+                usleep(max($this->retryDelayMs, 0) * 1000 * $attempt);
+            }
         }
+
+        return [];
     }
 
     private function client(): ClientInterface
@@ -169,9 +268,19 @@ final class GraphService
                 ->withDriver('bolt', $this->uri, Authenticate::basic($this->username, $this->password))
                 ->withDefaultDriver('bolt')
                 ->build();
+
+            $this->client->getDriver('bolt')->verifyConnectivity();
         }
 
         return $this->client;
+    }
+
+    private function closeClient(): void
+    {
+        if ($this->client !== null) {
+            $this->client->getDriver('bolt')->closeConnections();
+            $this->client = null;
+        }
     }
 
     private function safeLimit(int $limit): int
