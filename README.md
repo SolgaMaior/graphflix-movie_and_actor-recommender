@@ -7,43 +7,44 @@ queries through the Laudis Neo4j Bolt client.
 ## Why a graph database?
 
 Nodenex's useful question is not just “which movies have this genre?” It is
-“which movies are connected to this movie through actors and directors within a
-bounded number of hops?” That is a relationship-first question, which is where
-a graph database is a natural fit.
+“which movies are connected to this movie through actors and directors?”
+That is a relationship-first question, which is where a graph database is a
+natural fit.
 
-For example, a four-hop recommendation can follow this path:
+For example, a recommendation can follow this path:
 
 ```text
-Movie A -> Actor 1 -> Movie B -> Actor 2 -> Movie C
+Movie A -> Actor 1 -> Movie B
 ```
 
-CognoDB traverses each adjacent relationship directly. The query describes the
-path once with a variable-length pattern:
+CognoDB traverses each adjacent relationship directly. The query describes
+the path once:
 
 ```cypher
-MATCH p=(seed:Movie {title: $movieTitle})-[:ACTED_IN|DIRECTED*3..6]-(candidate:Movie)
+MATCH (actor:Actor)-[:ACTED_IN]->(seed:Movie {title: $movieTitle})
+MATCH (actor)-[:ACTED_IN]->(candidate:Movie)
 ```
 
-The database can then calculate the path distance, count alternative paths,
-and rank candidates by relevance while preserving the relationship context.
+The database can then count how many actors bridge two movies and rank
+candidates by relevance while preserving the relationship context.
 
-SQL can keep up closely for simple lookups and fixed-depth joins. A two-hop
-movie-to-movie lookup can join movies to a movie-actor pivot table and back to
-movies, especially when the relevant columns are indexed. The challenge is
+SQL can keep up closely for simple lookups and fixed-depth joins. A one-hop
+movie-to-movie lookup can join movies to a movie-actor pivot table and back
+to movies, especially when the relevant columns are indexed. The challenge is
 not that SQL cannot answer graph-like questions; it is that the query becomes
-overly complex as the number of hops grows.
+overly complex as more relationship types are blended together.
 
-Extending the same request to four or six hops requires more table aliases and
-repeated self-joins. If the depth is variable, the SQL solution usually needs
-a recursive CTE or application-side loops that issue more queries and rebuild
-paths manually. Each extra join can also expand intermediate result sets before
-the final candidates are filtered. The resulting SQL is harder to read,
-change, and maintain, even when a carefully indexed relational database still
-performs well.
+Combining actor overlap and director overlap into a single ranked result, as
+Nodenex's movie recommendation query does, requires more table aliases and
+repeated self-joins in SQL — one join path per relationship type, plus logic
+to keep rows where only one of the two signals is present. Each extra join
+can also expand intermediate result sets before the final candidates are
+filtered. The resulting SQL is harder to read, change, and maintain, even
+when a carefully indexed relational database still performs well.
 
 A graph stores the adjacency directly, so traversal follows the relationships
-that actually exist. CognoDB can return hop distance, path count, and the
-connecting actor or director as part of the query result, without requiring the
+that actually exist. CognoDB can return shared actor/director counts and the
+connecting name as part of the query result, without requiring the
 application to reconstruct the path. The advantage Nodenex demonstrates is
 therefore primarily about modeling and query complexity, with performance
 benefits for relationship-heavy workloads depending on the graph size,
@@ -151,8 +152,11 @@ graph LR
 ```
 
 The seeded graph contains `Movie`, `Actor`, `Director`, and `User` nodes with
-typed `WATCHED`, `ACTED_IN`, and `DIRECTED` relationships. Movie properties are
-`id`, `title`, `year`, and `genre`; people have `id` and `name`.
+typed `WATCHED`, `ACTED_IN`, and `DIRECTED` relationships. Movie properties
+are `id`, `title`, `year`, and `genre`. People have `id` and `name`. The
+queries in this document match movies by `title` and users by `id`; the
+`Movie.id` property is stored for reference and future use but isn't used as
+a match key by any query documented here.
 
 ## Routes and user flow
 
@@ -231,8 +235,6 @@ Nodenex branding and the current responsive visual style.
 Nodenex's core behavior is driven by Cypher queries that traverse the graph,
 not by isolated movie lookups. All queries are parameterized; no user input is
 concatenated into Cypher.
-
-### Multi-hop movie traversal
 
 ### Movies connected through shared actors
 
@@ -331,9 +333,9 @@ out.
 0.6` — director overlap counts for more than actor overlap here (a 1.5x
 weight), reflecting a judgment call that sharing a director is a stronger
 signal of similar style/tone than sharing a cast member. `distance: 2` is a
-hardcoded label marking this as a 2-hop-style recommendation strategy,
-likely for combining with results from other strategies (e.g. the 3-hop user
-traversal below) in a blended results view.
+hardcoded label marking this candidate as reachable within two relationship
+hops (Movie → Actor/Director → Movie), useful if the application merges
+recommendations from multiple strategies in a blended results view.
 
 ---
 
@@ -396,11 +398,12 @@ surface something new.
 `count(DISTINCT other)` scores each candidate by how many _distinct_ taste
 neighbors watched it — a movie that five different similar users watched
 outranks one that only a single similar user watched. `distance: 3` is a
-hardcoded label marking this as a 3-hop strategy (paired with `distance: 2`
-in the actor/director movie query above), useful if the application merges
-recommendations from multiple traversal depths and needs to tag which
-strategy produced each row. Sorting falls back from `relevanceScore` to raw
-`pathCount` to `title` for deterministic ordering when scores tie.
+hardcoded label marking this candidate as reachable within three relationship
+hops (User → Movie → User → Movie), paired with `distance: 2` in the
+actor/director movie query above so the application can tag which strategy
+produced each row when merging results. Sorting falls back from
+`relevanceScore` to raw `pathCount` to `title` for deterministic ordering
+when scores tie.
 
 This query is prone to returning empty results for users who have already
 watched a large fraction of the catalog: if none of a user's taste neighbors
