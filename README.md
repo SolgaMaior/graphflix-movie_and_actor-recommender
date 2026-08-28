@@ -156,14 +156,14 @@ typed `WATCHED`, `ACTED_IN`, and `DIRECTED` relationships. Movie properties are
 
 ## Routes and user flow
 
-| Route | Purpose |
-|---|---|
-| `/` | Landing page |
-| `/home` | Genre-filterable movie browser |
-| `/movies/{title}` | Movie details and graph recommendations |
-| `/users` | Popular movies ranked by user watches |
-| `/users/{id}` | Similar-user recommendations |
-| `/about` | Architecture summary and plain-language dictionary |
+| Route             | Purpose                                            |
+| ----------------- | -------------------------------------------------- |
+| `/`               | Landing page                                       |
+| `/home`           | Genre-filterable movie browser                     |
+| `/movies/{title}` | Movie details and graph recommendations            |
+| `/users`          | Popular movies ranked by user watches              |
+| `/users/{id}`     | Similar-user recommendations                       |
+| `/about`          | Architecture summary and plain-language dictionary |
 
 ## Recent updates
 
@@ -216,6 +216,16 @@ Nodenex branding and the current responsive visual style.
 
 ![Nodenex movie recommendations continued](docs/screenshots/app_screenshot_4_1.png)
 
+### Users who watched movies
+
+- Not recommended for a real app. This is just to simulate what a user would see.
+
+![Nodenex movie recommendations](docs/screenshots/app_screenshot_5.png)
+
+### Movie with similar taste
+
+![Nodenex movie recommendations continued](docs/screenshots/app_screenshot_6.png)
+
 ## Cypher queries that exercise the graph
 
 Nodenex's core behavior is driven by Cypher queries that traverse the graph,
@@ -224,60 +234,196 @@ concatenated into Cypher.
 
 ### Multi-hop movie traversal
 
-This query follows actor and director relationships for two or more hops. The
-variable-length pattern lets CognoDB discover connected movies without the
-application writing a separate join for every possible hop:
-
-```cypher
-MATCH p=(seed:Movie {title: $movieTitle})-[:ACTED_IN|DIRECTED*2..4]-(candidate:Movie)
-WHERE candidate <> seed
-RETURN candidate.title AS title,
-       min(length(p)) AS distance,
-       count(p) AS pathCount
-ORDER BY distance ASC, pathCount DESC, title
-LIMIT $limit
-```
-
-Deeper movie recommendations use a variable-length actor/director traversal:
+### Movies connected through shared actors
 
 ```cypher
 MATCH (seed:Movie {title: $movieTitle})
-MATCH p=(seed)-[:ACTED_IN|DIRECTED*3..6]-(candidate:Movie)
+MATCH (actor:Actor)-[:ACTED_IN]->(seed)
+MATCH (actor)-[:ACTED_IN]->(candidate:Movie)
+
 WHERE candidate <> seed
-  AND length(p) >= $minDistance
-  AND length(p) <= $maxDistance
-WITH candidate, p, nodes(p)[1].name AS connectorName,
-     labels(nodes(p)[1])[0] AS connectorType
-WITH candidate, min(length(p)) AS distance, count(p) AS pathCount,
-     collect(DISTINCT connectorName)[0] AS connectorName,
-     collect(DISTINCT connectorType)[0] AS connectorType
-RETURN candidate.title AS title, distance, pathCount,
-       (1.0 / toFloat(distance)) * log10(1.0 + toFloat(pathCount)) AS relevanceScore,
-       connectorName, connectorType
-ORDER BY relevanceScore DESC, pathCount DESC, distance ASC, title
+
+WITH candidate,
+    count(DISTINCT actor) AS sharedActors,
+    collect(DISTINCT actor.name) AS actors
+
+RETURN candidate.title AS title,
+    sharedActors,
+    toFloat(sharedActors) AS relevanceScore,
+    actors[0] AS connectorName,
+    'Actor' AS connectorType
+
+ORDER BY sharedActors DESC, title ASC
 LIMIT $limit
 ```
 
-The actor-only section uses the same shape but only `ACTED_IN` relationships.
-User recommendations use a longer shared-taste traversal:
+**How it works:** starting from a seed movie, this finds every `Actor` who
+`ACTED_IN` that movie, then finds every other movie (`candidate`) that same
+actor also `ACTED_IN` — a single-hop "actors in common" traversal. `WHERE
+candidate <> seed` excludes the seed movie from its own results, since an
+actor in the seed movie trivially "shares" it with itself.
+
+`count(DISTINCT actor)` counts how many _different_ actors bridge the seed
+and the candidate — a movie sharing three cast members with the seed ranks
+higher than one sharing just one. `collect(DISTINCT actor.name)` gathers all
+the bridging actors' names into a list, and `actors[0]` picks the first one
+as a representative "connector" to show in the UI — this is a display
+simplification, not necessarily "the most important" shared actor, since the
+list order isn't guaranteed to reflect relevance.
+
+`relevanceScore` here is just `sharedActors` cast to a float — a simple,
+un-decayed count rather than a weighted formula. Results are sorted by that
+count, with title as a tiebreaker for stable, deterministic ordering.
+
+---
+
+### Movie recommendations blending actors and directors
 
 ```cypher
-MATCH (selected:User {id: $userId})-[:WATCHED]->(shared:Movie)
-      <-[:WATCHED]-(similar:User)-[:WATCHED]->(recommendation:Movie)
-WHERE similar <> selected
-  AND NOT (selected)-[:WATCHED]->(recommendation)
-WITH recommendation, count(DISTINCT similar) AS similarUsers
-RETURN recommendation.title AS title, similarUsers
-ORDER BY similarUsers DESC, title
+MATCH (seed:Movie {title: $movieTitle})
+OPTIONAL MATCH (seed)<-[:ACTED_IN]-(a:Actor)-[:ACTED_IN]->(candidate:Movie)
+WHERE candidate <> seed
+WITH seed, candidate, count(DISTINCT a) AS sharedActors
+
+OPTIONAL MATCH (seed)<-[:DIRECTED]-(d:Director)-[:DIRECTED]->(candidate)
+WITH seed, candidate, sharedActors, count(DISTINCT d) AS sharedDirectors
+
+WHERE candidate IS NOT NULL
+
+RETURN
+    candidate.title AS title,
+    sharedActors,
+    sharedDirectors,
+    2 AS distance,
+    (
+        sharedActors * 0.4 +
+        sharedDirectors * 0.6
+    ) AS relevanceScore
+ORDER BY relevanceScore DESC
+LIMIT $limit;
+```
+
+**How it works:** this is a more sophisticated version of the actor-sharing
+query above — it combines two independent signals (shared cast and shared
+crew) into one ranked list.
+
+Both hops use `OPTIONAL MATCH` rather than `MATCH`. This matters: a plain
+`MATCH` would require _both_ an actor-overlap path _and_ a director-overlap
+path to exist for a candidate to appear at all, silently dropping any movie
+that only shares a director (or only shares an actor). `OPTIONAL MATCH`
+instead lets either side come back empty without eliminating the row — a
+missing match just contributes `count(DISTINCT a) = 0` or
+`count(DISTINCT d) = 0` rather than removing the candidate outright.
+
+The query runs the actor hop first and folds it into `sharedActors` via the
+first `WITH`, carrying `seed` and `candidate` forward so the second
+`OPTIONAL MATCH` can reuse them for the director hop. This two-stage
+`OPTIONAL MATCH` → `WITH` → `OPTIONAL MATCH` pattern is how Cypher chains
+independent optional lookups without one search silently constraining the
+other.
+
+`WHERE candidate IS NOT NULL` guards against the edge case where _neither_
+optional match found anything — `OPTIONAL MATCH` can still produce a row with
+`candidate` bound to `null` if no path existed at all, and this filters those
+out.
+
+`relevanceScore` is a weighted blend: `sharedActors * 0.4 + sharedDirectors *
+0.6` — director overlap counts for more than actor overlap here (a 1.5x
+weight), reflecting a judgment call that sharing a director is a stronger
+signal of similar style/tone than sharing a cast member. `distance: 2` is a
+hardcoded label marking this as a 2-hop-style recommendation strategy,
+likely for combining with results from other strategies (e.g. the 3-hop user
+traversal below) in a blended results view.
+
+---
+
+### Users with similar taste
+
+```cypher
+MATCH (seed:User {id: $userId})-[:WATCHED]-(shared:Movie)-[:WATCHED]-(other:User)
+WHERE other <> seed
+WITH other, count(DISTINCT shared) AS sharedMovies
+RETURN other.name AS name, sharedMovies,
+       toFloat(sharedMovies) AS relevanceScore
+ORDER BY relevanceScore DESC, sharedMovies DESC, name
 LIMIT $limit
 ```
 
-The shared-taste query is especially awkward in a relational database: it
-requires multiple self-joins through the watch table, exclusion logic, and
-deduplication of intermediate users. In the graph, the connected path is
-expressed directly and the query can rank recommendations by the number of
-similar users. See
-[`docs/cypher/core-queries.cypher`](docs/cypher/core-queries.cypher) for the
+**How it works:** a 2-hop traversal that finds "taste neighbors" rather than
+movie recommendations directly. From the `seed` user, it walks out to every
+movie they've `WATCHED`, then back in to every `other` user who also watched
+that movie. `other <> seed` excludes the seed user from being counted as
+their own neighbor (which the undirected `-[:WATCHED]-` pattern would
+otherwise allow, since the path could loop back through `seed`).
+
+`count(DISTINCT shared)` tallies how many _different_ movies each `other`
+user has in common with `seed` — someone who overlaps on five movies is a
+much stronger taste match than someone who overlaps on one, and `DISTINCT`
+ensures a single shared movie isn't somehow counted more than once. As in
+the actor query above, `relevanceScore` is just that count cast to a float,
+with `sharedMovies` and `name` as tiebreakers for stable ordering.
+
+Note that `$userId` here is bound directly as a string parameter — since
+`User.id` values are stored as strings (e.g. `"u7"`), the caller
+(`similarUsers(string $userId, ...)`) must pass the id in that same string
+form, not as a bare integer, or this match will silently return nothing.
+
+---
+
+### Recommended movies from similar users
+
+```cypher
+MATCH (seed:User {id: $userId})-[:WATCHED]-(shared:Movie)-[:WATCHED]-(other:User)-[:WATCHED]-(candidate:Movie)
+WHERE other <> seed AND NOT (seed)-[:WATCHED]-(candidate)
+WITH candidate, count(DISTINCT other) AS pathCount
+RETURN candidate.title AS title, 3 AS distance, pathCount,
+       toFloat(pathCount) AS relevanceScore
+ORDER BY relevanceScore DESC, pathCount DESC, title
+LIMIT $limit
+```
+
+**How it works:** this extends the "similar users" query one hop further to
+get actual movie recommendations, rather than a list of similar people. It's
+the classic collaborative-filtering chain: `seed` → movies they watched
+(`shared`) → other users who also watched those (`other`) → movies _those_
+users watched (`candidate`).
+
+`other <> seed` again prevents the seed user from looping back through
+themselves via the undirected `WATCHED` edges. `NOT (seed)-[:WATCHED]-(candidate)`
+excludes anything the seed user has already watched, since the goal is to
+surface something new.
+
+`count(DISTINCT other)` scores each candidate by how many _distinct_ taste
+neighbors watched it — a movie that five different similar users watched
+outranks one that only a single similar user watched. `distance: 3` is a
+hardcoded label marking this as a 3-hop strategy (paired with `distance: 2`
+in the actor/director movie query above), useful if the application merges
+recommendations from multiple traversal depths and needs to tag which
+strategy produced each row. Sorting falls back from `relevanceScore` to raw
+`pathCount` to `title` for deterministic ordering when scores tie.
+
+This query is prone to returning empty results for users who have already
+watched a large fraction of the catalog: if none of a user's taste neighbors
+happen to have watched anything that user hasn't already seen, the `NOT`
+filter eliminates every candidate. In that situation a popularity-based
+fallback (e.g. `popularMoviesByUsers`) is a reasonable substitute, since
+collaborative filtering has no signal left to offer.
+
+---
+
+### Notes on the implementation (`GraphService::run`)
+
+All of the above queries are executed through a shared `run()` method that
+wraps the actual Neo4j client call in a retry loop (`$this->retries`,
+default 3 attempts, with an increasing delay between each). If every attempt
+fails, the error is logged and the method returns an empty array rather than
+throwing — callers get an empty result set plus a message available via
+`GraphService::error()`, rather than an exception bubbling up. This means an
+empty array from any of these methods can mean either "no matches" or
+"the database call failed" — worth checking `error()` when a result looks
+unexpectedly empty.
+
+See [`docs/cypher/core-queries.cypher`](docs/cypher/core-queries.cypher) for the
 complete workbook and parameters.
 
 ## Verification
