@@ -126,6 +126,13 @@ The loader selects 500 valid rated movies, active users, and the first 10
 billed actors per movie. It uses `MERGE`, so rerunning it does not duplicate
 matching nodes or relationships. It does not delete old data.
 
+**Note**
+The dataset in this project is a modified version where the data reduced to personal
+hardware limitations during the seeding process
+
+You can get the original dataset through this link:
+https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset?resource=download
+
 ### 5. Build and run the UI
 
 For a production-style asset build:
