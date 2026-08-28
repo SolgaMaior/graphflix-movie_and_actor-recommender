@@ -1,4 +1,4 @@
-// Graphflix Phase 1 query workbook
+// Nodenex Phase 1 query workbook
 // Run each query independently in Neo4j Browser.
 // Parameters are declared here for Browser convenience; Laravel will supply
 // them at runtime later.

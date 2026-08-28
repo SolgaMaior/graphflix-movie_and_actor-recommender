@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ $title ?? 'Graphflix' }}</title>
+    <title>{{ $title ?? 'Nodenex' }}</title>
     <link rel="icon" type="image/png" sizes="192x192" href="{{ asset('favicon-192.png') }}">
     @if (file_exists(public_path('hot')) || file_exists(public_path('build/manifest.json')))
         @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -18,7 +18,7 @@
     </div>
     <nav class="border-b-4 border-black bg-[#ffdf3f]">
         <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
-            <a href="{{ url('/') }}" class="text-2xl font-black uppercase tracking-tight">Graphflix<span class="text-[#ff5c8a]">.</span></a>
+            <a href="{{ url('/') }}" class="text-2xl font-black uppercase tracking-tight">Nodenex<span class="text-[#ff5c8a]">.</span></a>
             @if (!request()->routeIs('landing'))
             <div class="flex gap-5 text-sm font-black uppercase">
                 <a href="{{ url('/home') }}" class="hover:underline">Movies</a>
@@ -41,8 +41,8 @@
         .page-loading { display: none; position: fixed; inset: 0; z-index: 50; align-items: center; justify-content: center; background: rgba(247, 241, 223, .88); }
         .page-loading.is-visible { display: flex; }
         .page-loading__card { border: 4px solid #171717; background: #ffdf3f; box-shadow: 6px 6px 0 #171717; padding: 1rem 1.25rem; font-weight: 900; text-transform: uppercase; }
-        .page-loading__spinner { display: inline-block; width: 1rem; height: 1rem; margin-right: .5rem; border: 3px solid #171717; border-right-color: transparent; border-radius: 9999px; animation: graphflix-spin .7s linear infinite; vertical-align: -.15rem; }
-        @keyframes graphflix-spin { to { transform: rotate(360deg); } }
+        .page-loading__spinner { display: inline-block; width: 1rem; height: 1rem; margin-right: .5rem; border: 3px solid #171717; border-right-color: transparent; border-radius: 9999px; animation: nodenex-spin .7s linear infinite; vertical-align: -.15rem; }
+        @keyframes nodenex-spin { to { transform: rotate(360deg); } }
     </style>
     <script>
         (() => {

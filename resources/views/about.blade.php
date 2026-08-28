@@ -4,9 +4,9 @@
 <div class="flex flex-col gap-8 lg:items-stretch lg:flex-row xl:gap-10">
     <div class="min-w-0 lg:flex lg:w-[56%] lg:flex-col xl:w-3/5">
         <section class="lg:flex-1">
-        <p class="text-sm font-black uppercase tracking-widest">How Graphflix works</p>
-        <h1 class="mt-2 text-4xl font-black uppercase sm:text-5xl">About Graphflix</h1>
-        <p class="mt-4 max-w-xl text-base font-bold leading-7 sm:text-lg">Graphflix helps you discover movies by looking at the people and viewing choices that connect them.</p>
+        <p class="text-sm font-black uppercase tracking-widest">How Nodenex works</p>
+        <h1 class="mt-2 text-4xl font-black uppercase sm:text-5xl">About Nodenex</h1>
+        <p class="mt-4 max-w-xl text-base font-bold leading-7 sm:text-lg">Nodenex helps you discover movies by looking at the people and viewing choices that connect them.</p>
 
         <div class="mt-6 grid gap-4">
             <article class="border-4 border-black bg-white p-5 shadow-[5px_5px_0_#171717] sm:p-6">
@@ -31,7 +31,7 @@
 
             <article class="border-4 border-black bg-[#ffb7d1] p-5 shadow-[5px_5px_0_#171717] sm:p-6">
                 <h2 class="text-xl font-black uppercase sm:text-2xl">A note about SQL</h2>
-                <p class="mt-2 text-base font-bold leading-7 sm:text-lg">Traditional SQL databases are excellent for many jobs. Graphflix uses a connection-focused database here because following several layers of movie and viewer relationships stays easier to understand as the search grows.</p>
+                <p class="mt-2 text-base font-bold leading-7 sm:text-lg">Traditional SQL databases are excellent for many jobs. Nodenex uses a connection-focused database here because following several layers of movie and viewer relationships stays easier to understand as the search grows.</p>
             </article>
         </div>
         </section>
