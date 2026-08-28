@@ -56,7 +56,7 @@ final class GraphService
     public function actorsForMovie(string $title): array
     {
         $rows = $this->run(
-            'MATCH (m:Movie {title: $movieTitle})<-[:ACTED_IN]-(a:Actor) RETURN a.name AS name ORDER BY a.id LIMIT 1',
+            'MATCH (m:Movie {title: $movieTitle})<-[:ACTED_IN]-(a:Actor) RETURN a.name AS name ORDER BY a.name LIMIT 50',
             ['movieTitle' => $title],
         );
 
@@ -112,6 +112,7 @@ final class GraphService
 
             RETURN candidate.title AS title,
                 sharedActors,
+                toFloat(sharedActors) AS relevanceScore,
                 actors[0] AS connectorName,
                 'Actor' AS connectorType
 
@@ -123,7 +124,7 @@ final class GraphService
 
         return array_map(static fn (array $row): Recommendation => new Recommendation(
             title: (string) ($row['title'] ?? ''),
-            distance: (int) ($row['distance'] ?? 3),
+            sharedActors: (int) ($row['sharedActors'] ?? 0),
             pathCount: (int) ($row['pathCount'] ?? 0),
             relevanceScore: (float) ($row['relevanceScore'] ?? 0),
             connectorName: isset($row['connectorName']) ? (string) $row['connectorName'] : null,
@@ -166,10 +167,8 @@ final class GraphService
     }
 
     /** @return list<Recommendation> */
-    public function recommendationsForMovie(string $title, int $minDistance = 2, int $maxDistance = 6, int $limit = 10): array
+    public function recommendationsForMovie(string $title, int $limit = 10): array
     {
-        $minDistance = max(1, $minDistance);
-        $maxDistance = max($minDistance, $maxDistance);
         $rows = $this->run(
             <<<'CYPHER'
             MATCH (seed:Movie {title: $movieTitle})
@@ -196,8 +195,6 @@ final class GraphService
             CYPHER,
             [
                 'movieTitle' => $title,
-                'minDistance' => $minDistance,
-                'maxDistance' => $maxDistance,
                 'limit' => $this->safeLimit($limit),
             ],
         );
@@ -206,6 +203,8 @@ final class GraphService
             title: (string) ($row['title'] ?? ''),
             distance: isset($row['distance']) ? (int) $row['distance'] : null,
             pathCount: (int) ($row['pathCount'] ?? 0),
+            sharedActors: (int) ($row['sharedActors'] ?? 0),
+            sharedDirectors: (int) ($row['sharedDirectors'] ?? 0),
             relevanceScore: (float) ($row['relevanceScore'] ?? 0),
             connectorName: isset($row['connectorName']) ? (string) $row['connectorName'] : null,
             connectorType: isset($row['connectorType']) ? (string) $row['connectorType'] : null,
@@ -244,8 +243,7 @@ final class GraphService
             WHERE other <> seed AND NOT (seed)-[:WATCHED]-(candidate)
             WITH candidate, count(DISTINCT other) AS pathCount
             RETURN candidate.title AS title, 3 AS distance, pathCount,
-                   toFloat(pathCount) AS relevanceScore,
-                   'similar user' AS connectorName
+                   toFloat(pathCount) AS relevanceScore
             ORDER BY relevanceScore DESC, pathCount DESC, title
             LIMIT $limit
             CYPHER,
@@ -257,7 +255,6 @@ final class GraphService
             distance: (int) ($row['distance'] ?? 3),
             pathCount: (int) ($row['pathCount'] ?? 0),
             relevanceScore: (float) ($row['relevanceScore'] ?? 0),
-            connectorName: (string) ($row['connectorName'] ?? 'similar user'),
         ), $rows);
     }
 

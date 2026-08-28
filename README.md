@@ -163,7 +163,25 @@ typed `WATCHED`, `ACTED_IN`, and `DIRECTED` relationships. Movie properties are
 | `/movies/{title}` | Movie details and graph recommendations |
 | `/users` | Popular movies ranked by user watches |
 | `/users/{id}` | Similar-user recommendations |
-| `/about` | Architecture summary |
+| `/about` | Architecture summary and plain-language dictionary |
+
+## Recent updates
+
+- Movie recommendations now explain why they appear by showing shared cast or
+  director connections, viewer support, connection distance, and match
+  strength when those values are available.
+- Movie pages list the full available cast instead of stopping after one actor.
+- User recommendations show shared viewing history and how many similar viewers
+  helped surface a movie.
+- The Popular page now includes a list of viewers whose profiles can be opened
+  for personalized recommendations.
+- The About page has a responsive two-column layout: the Graphflix overview is
+  on the left and a dictionary is on the right. The dictionary explains labels
+  such as “shared cast member,” “match strength,” and “connections away” in
+  plain language.
+- The match-strength dictionary includes guide ranges: `0–0.9` is a light
+  connection, `1–1.9` is a good connection, and `2+` is a strong connection.
+  These values are comparison guides, not a score out of 10.
 
 Every movie card links back to `/movies/{title}`, allowing recommendations to
 be explored recursively. Empty recommendation sections show an explicit empty
@@ -201,10 +219,11 @@ any card opens the same movie detail and recommendation flow.
 ### 4. Movie details and recommendations
 
 The movie detail page shows the selected movie's genre, year, actors, and
-director, followed by two graph-powered sections. The first contains deeper
-network recommendations, and the second shows other movies connected through
-actors. Each yellow recommendation card is clickable and includes its graph
-distance in hops.
+director, followed by two graph-powered sections. The first contains related
+recommendations using cast and director connections, and the second shows
+other movies connected through actors. Each yellow recommendation card is
+clickable and explains the connection, match strength, and viewer support when
+those details are available.
 
 ![Graphflix movie recommendations](docs/screenshots/app_screenshot_4.png)
 
@@ -282,6 +301,7 @@ complete workbook and parameters.
 ```bash
 php artisan view:cache
 php artisan test
+npm run build
 ```
 
 The direct database validation checklist is in

@@ -10,7 +10,7 @@
 @if (count($movies))
 <div class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 @foreach ($movies as $movie)
-    <a href="{{ url('/movies/'.rawurlencode($movie->title)) }}" class="border-4 border-black bg-white p-5 shadow-[6px_6px_0_#171717] hover:translate-x-1 hover:translate-y-1 hover:shadow-none">
+    <a href="{{ url('/movies/'.rawurlencode($movie->title)) }}" class="border-4 border-black bg-[#4cf9ff] p-5 shadow-[6px_6px_0_#171717] hover:translate-x-1 hover:translate-y-1 hover:shadow-none">
         <h2 class="font-black">{{ $movie->title }}</h2><p class="mt-2 text-sm font-bold">{{ $movie->genre ?? 'Unknown' }} · {{ $movie->year ?? '—' }}</p>
     </a>
 @endforeach

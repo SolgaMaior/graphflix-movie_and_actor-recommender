@@ -9,7 +9,7 @@
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     @endif
 </head>
-<body class="min-h-screen bg-[#f7f1df] text-[#171717]">
+<body class="min-h-screen bg-[#f7eeee] text-[#171717]" style="background-image: radial-gradient(#aaaaaa 1.5px, transparent 1.5px); background-size: 24px 24px;">
     <div id="page-loading" class="page-loading" aria-live="polite" aria-hidden="true">
         <div class="page-loading__card">
             <span class="page-loading__spinner" aria-hidden="true"></span>
@@ -19,11 +19,13 @@
     <nav class="border-b-4 border-black bg-[#ffdf3f]">
         <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
             <a href="{{ url('/') }}" class="text-2xl font-black uppercase tracking-tight">Graphflix<span class="text-[#ff5c8a]">.</span></a>
+            @if (!request()->routeIs('landing'))
             <div class="flex gap-5 text-sm font-black uppercase">
                 <a href="{{ url('/home') }}" class="hover:underline">Movies</a>
                 <a href="{{ url('/users') }}" class="hover:underline">Popular</a>
                 <a href="{{ url('/about') }}" class="hover:underline">About</a>
             </div>
+            @endif
         </div>
     </nav>
     <main class="mx-auto max-w-6xl px-6 py-10">
